@@ -8,6 +8,11 @@ sessions/
 # Authentication files (never commit)
 **/auth.json
 **/credentials.json
+**/env
+
+# Comparison results are committed, but temporary files are not
+comparison/results/*.tmp
+comparison/results/*~ 
 
 # OS files
 .DS_Store
