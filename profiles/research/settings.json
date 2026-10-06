@@ -1,0 +1,13 @@
+{
+  "description": "Analysis and research. High thinking. Extended output.",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-opus-4-1",
+  "defaultThinkingLevel": "high",
+  "enabledTools": ["read", "edit", "bash", "glob", "grep", "web_fetch"],
+  "autoCompact": true,
+  "compactThreshold": 0.85,
+  "shell": {
+    "timeout": 60000,
+    "maxOutputLines": 500
+  }
+}

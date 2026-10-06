@@ -1,0 +1,191 @@
+[tools]
+node = "22.19"
+pi = "1.0.4"
+
+[env]
+_PI_ROOT = "{{ config_root }}"
+
+[settings]
+lockfile = true
+
+[tasks.list]
+description = "List available profiles"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PROFILES_DIR="{{ config_root }}/profiles"
+echo "Available profiles:"
+echo ""
+for dir in "$PROFILES_DIR"/*/; do
+    name=$(basename "$dir")
+    desc=""
+    if [ -f "$dir/settings.json" ]; then
+        desc=$(python3 -c "
+import json
+try:
+    with open('$dir/settings.json') as f:
+        d = json.load(f)
+    print(d.get('description', ''))
+except Exception:
+    pass
+" 2>/dev/null || true)
+    fi
+    if [ -z "$desc" ]; then
+        desc="(no description)"
+    fi
+    printf "  %-16s %s\\n" "$name" "$desc"
+done
+"""
+
+[tasks."diff"]
+description = "Compare two profiles (usage: mise run diff -- <a> <b>)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PROFILES_DIR="{{ config_root }}/profiles"
+A="${1:?Specify first profile}"
+B="${2:?Specify second profile}"
+DIR_A="$PROFILES_DIR/$A"
+DIR_B="$PROFILES_DIR/$B"
+
+if [ ! -d "$DIR_A" ]; then
+    echo "Error: profile '$A' not found." >&2
+    exit 1
+fi
+if [ ! -d "$DIR_B" ]; then
+    echo "Error: profile '$B' not found." >&2
+    exit 1
+fi
+
+echo "=== $A <-> $B ==="
+echo ""
+echo "--- Files only in $A:"
+comm -23 \
+    <(cd "$DIR_A" && find . -type f | sort) \
+    <(cd "$DIR_B" && find . -type f | sort) | sed 's/^/  /'
+echo ""
+
+echo "--- Files only in $B:"
+comm -13 \
+    <(cd "$DIR_A" && find . -type f | sort) \
+    <(cd "$DIR_B" && find . -type f | sort) | sed 's/^/  /'
+echo ""
+
+echo "--- Differences:"
+diff -ru "$DIR_A" "$DIR_B" || true
+"""
+
+[tasks."new"]
+description = "Create new profile from existing (usage: mise run new -- <name> [base])"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PROFILES_DIR="{{ config_root }}/profiles"
+NEW_NAME="${1:?Specify new profile name}"
+BASE="${2:-minimal}"
+BASE_DIR="$PROFILES_DIR/$BASE"
+NEW_DIR="$PROFILES_DIR/$NEW_NAME"
+
+if [ -d "$NEW_DIR" ]; then
+    echo "Error: profile '$NEW_NAME' already exists." >&2
+    exit 1
+fi
+if [ ! -d "$BASE_DIR" ]; then
+    echo "Error: base profile '$BASE' not found." >&2
+    exit 1
+fi
+
+cp -r "$BASE_DIR" "$NEW_DIR"
+mkdir -p "{{ config_root }}/sessions/$NEW_NAME"
+echo "Created profile: $NEW_NAME"
+echo "Base: $BASE"
+echo ""
+echo "Edit:"
+echo "  $NEW_DIR/settings.json"
+echo "  $NEW_DIR/AGENTS.md"
+echo ""
+echo "Test:"
+echo "  ../../bin/pique $NEW_NAME --version"
+"""
+
+[tasks.validate]
+description = "Validate all profiles"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PROFILES_DIR="{{ config_root }}/profiles"
+ERRORS=0
+
+for dir in "$PROFILES_DIR"/*/; do
+    name=$(basename "$dir")
+    echo "--- $name"
+
+    if [ -f "$dir/settings.json" ]; then
+        if python3 -c "import json; json.load(open('$dir/settings.json'))" 2>/dev/null; then
+            echo "  settings.json: OK"
+        else
+            echo "  settings.json: INVALID" >&2
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        echo "  settings.json: MISSING" >&2
+        ERRORS=$((ERRORS + 1))
+    fi
+
+    if [ -f "$dir/mcp.json" ]; then
+        if python3 -c "import json; json.load(open('$dir/mcp.json'))" 2>/dev/null; then
+            echo "  mcp.json: OK"
+        else
+            echo "  mcp.json: INVALID" >&2
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+
+    if [ -f "$dir/AGENTS.md" ]; then
+        echo "  AGENTS.md: OK"
+    else
+        echo "  AGENTS.md: MISSING (optional)"
+    fi
+done
+
+echo ""
+if [ "$ERRORS" -gt 0 ]; then
+    echo "FAIL: $ERRORS error(s)" >&2
+    exit 1
+else
+    echo "PASS"
+fi
+"""
+
+[tasks."sync-shared"]
+description = "Copy shared skills to all profiles"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+SHARED_DIR="{{ config_root }}/shared"
+PROFILES_DIR="{{ config_root }}/profiles"
+
+if [ ! -d "$SHARED_DIR/skills" ]; then
+    echo "No shared skills found."
+    exit 0
+fi
+
+for profile_dir in "$PROFILES_DIR"/*/; do
+    profile_name=$(basename "$profile_dir")
+    mkdir -p "$profile_dir/skills"
+
+    for skill_dir in "$SHARED_DIR/skills"/*/; do
+        skill_name=$(basename "$skill_dir")
+        target="$profile_dir/skills/$skill_name"
+
+        if [ ! -d "$target" ]; then
+            cp -r "$skill_dir" "$target"
+            echo "  $profile_name: + $skill_name"
+        else
+            echo "  $profile_name: = $skill_name (exists, skipped)"
+        fi
+    done
+done
+
+echo "Sync complete."
+"""

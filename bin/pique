@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pique — Launch Pi with a selected profile.
+#
+# Usage:
+#   pique <profile> [pi-arguments...]
+#   pique --list
+#   pique --diff <a> <b>
+#
+# This script:
+#   1. Resolves the profile directory.
+#   2. Sets PI_CODING_AGENT_DIR.
+#   3. Runs Pi in the current working directory.
+#
+# Project-level configuration (.pi/ in the current directory)
+# continues to work. Project settings override profile settings.
+
+# --- Resolve repository root ---
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+PIQUE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Allow override via environment
+PIQUE_ROOT="${PIQUE_ROOT:-$PIQUE_ROOT}"
+
+PROFILES_DIR="$PIQUE_ROOT/profiles"
+SESSIONS_DIR="$PIQUE_ROOT/sessions"
+
+# --- Helper functions ---
+
+list_profiles() {
+    echo "Available profiles:"
+    echo ""
+    for dir in "$PROFILES_DIR"/*/; do
+        name=$(basename "$dir")
+        desc=""
+        if [ -f "$dir/settings.json" ]; then
+            desc=$(python3 -c "
+import json
+try:
+    with open('$dir/settings.json') as f:
+        d = json.load(f)
+    print(d.get('description', ''))
+except Exception:
+    pass
+" 2>/dev/null || true)
+        fi
+        if [ -z "$desc" ]; then
+            desc="(no description)"
+        fi
+        printf "  %-16s %s\\n" "$name" "$desc"
+    done
+}
+
+diff_profiles() {
+    local a="${1:?Specify first profile}"
+    local b="${2:?Specify second profile}"
+    local dir_a="$PROFILES_DIR/$a"
+    local dir_b="$PROFILES_DIR/$b"
+
+    if [ ! -d "$dir_a" ]; then
+        echo "Error: profile '$a' not found." >&2
+        exit 1
+    fi
+    if [ ! -d "$dir_b" ]; then
+        echo "Error: profile '$b' not found." >&2
+        exit 1
+    fi
+
+    echo "=== $a <-> $b ==="
+    echo ""
+    diff -ru "$dir_a" "$dir_b" || true
+}
+
+# --- Argument parsing ---
+
+if [ $# -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    cat <<EOF
+pique — Launch Pi with a selected profile
+
+Usage:
+  pique <profile> [pi-arguments...]   Launch Pi with profile
+  pique --list                        List available profiles
+  pique --diff <a> <b>                Compare two profiles
+
+Profiles directory: $PROFILES_DIR
+Repository: $PIQUE_ROOT
+
+Examples:
+  pique development                   Start Pi with development profile
+  pique research --print "Analyze"    Start Pi with research profile, print mode
+  pique minimal --version             Check Pi version with minimal profile
+EOF
+    exit 0
+fi
+
+if [ "$1" = "--list" ] || [ "$1" = "-l" ]; then
+    list_profiles
+    exit 0
+fi
+
+if [ "$1" = "--diff" ]; then
+    shift
+    diff_profiles "$@"
+    exit 0
+fi
+
+# --- Launch with profile ---
+
+PROFILE_NAME="$1"
+PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
+
+if [ ! -d "$PROFILE_DIR" ]; then
+    echo "Error: profile '$PROFILE_NAME' not found." >&2
+    echo "Searched: $PROFILES_DIR" >&2
+    echo "" >&2
+    list_profiles >&2
+    exit 1
+fi
+
+shift  # Remove profile name from arguments
+
+# --- Set environment ---
+
+export PI_CODING_AGENT_DIR="$PROFILE_DIR"
+
+# Set sessions directory if profile has one
+PROFILE_SESSIONS="$SESSIONS_DIR/$PROFILE_NAME"
+if [ -d "$PROFILE_SESSIONS" ] || [ -d "$SESSIONS_DIR" ]; then
+    mkdir -p "$PROFILE_SESSIONS"
+    export PI_CODING_AGENT_SESSION_DIR="$PROFILE_SESSIONS"
+fi
+
+# --- Resolve Pi binary ---
+
+PI_BIN=""
+
+# Try mise from the pique repository
+if command -v mise >/dev/null 2>&1; then
+    PI_BIN="$(cd "$PIQUE_ROOT" && mise which pi 2>/dev/null || true)"
+fi
+
+# Fallback to PATH
+if [ -z "$PI_BIN" ] || [ ! -x "$PI_BIN" ]; then
+    PI_BIN="$(command -v pi 2>/dev/null || true)"
+fi
+
+if [ -z "$PI_BIN" ]; then
+    echo "Error: 'pi' binary not found." >&2
+    echo "" >&2
+    echo "Install Pi:" >&2
+    echo "  cd $PIQUE_ROOT" >&2
+    echo "  mise install" >&2
+    echo "" >&2
+    echo "Or install globally:" >&2
+    echo "  curl -fsSL https://pi.dev/install.sh | sh" >&2
+    exit 1
+fi
+
+# --- Launch Pi ---
+
+exec "$PI_BIN" "$@"

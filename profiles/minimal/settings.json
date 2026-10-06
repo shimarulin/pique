@@ -1,0 +1,9 @@
+{
+  "description": "Base setup. No extensions. Low thinking level.",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-4-5",
+  "defaultThinkingLevel": "low",
+  "enabledTools": ["read", "edit", "bash"],
+  "autoCompact": true,
+  "compactThreshold": 0.8
+}

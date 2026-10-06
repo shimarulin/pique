@@ -1,0 +1,24 @@
+# mise local overrides
+mise.local.toml
+mise.local.lock
+
+# Pi sessions (may contain sensitive data)
+sessions/
+
+# Authentication files (never commit)
+**/auth.json
+**/credentials.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
