@@ -44,11 +44,39 @@ pique может хранить неограниченное количеств�
 Или клонируйте вручную:
 
 ```bash
-git clone <repository-url> ~/.config/pique
-cd ~/.config/pique
+git clone <repository-url> "$HOME/.config/pique"
+cd "$HOME/.config/pique"
 mise trust
 mise install
-ln -sf ~/.config/pique/bin/pique ~/.local/bin/pique
+ln -sf "$HOME/.config/pique/bin/pique" "$HOME/.local/bin/pique"
+```
+
+### Установка в произвольный каталог
+
+Если вы хотите хранить репозиторий не в `~/.config/pique`, а, например, в
+`~/projects/pi-configs` или в каталоге dotfiles, это работает:
+
+```bash
+git clone <repository-url> "$HOME/projects/pi-configs"
+ln -sf "$HOME/projects/pi-configs/bin/pique" "$HOME/.local/bin/pique"
+```
+
+Скрипт `pique` разрешает симлинки и находит репозиторий автоматически.
+Каталог `$HOME/.config/pique` при этом не нужен.
+
+Альтернативно можно сделать симлинк на весь репозиторий:
+
+```bash
+ln -s "$PWD" "$HOME/.config/pique"
+```
+
+Тогда `pique` и mise-задачи (`cd "$HOME/.config/pique" && mise run list`) будут
+работать как при стандартной установке.
+
+Для переопределения пути вручную используйте переменную окружения:
+
+```bash
+export PIQUE_ROOT="$HOME/projects/pi-configs"
 ```
 
 ## Использование

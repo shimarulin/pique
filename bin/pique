@@ -13,11 +13,15 @@ set -euo pipefail
 #   2. Sets PI_CODING_AGENT_DIR.
 #   3. Runs Pi in the current working directory.
 #
+# The repository can be located anywhere. This script resolves symlinks
+# and finds the real repository root. Set PIQUE_ROOT to override.
+#
 # Project-level configuration (.pi/ in the current directory)
 # continues to work. Project settings override profile settings.
 
 # --- Resolve repository root ---
 
+# Resolve the script location, following symlinks.
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT_SOURCE" ]; do
     SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
@@ -25,52 +29,90 @@ while [ -L "$SCRIPT_SOURCE" ]; do
     [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
-PIQUE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DETECTED_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Allow override via environment
-PIQUE_ROOT="${PIQUE_ROOT:-$PIQUE_ROOT}"
+# Allow override via environment variable PIQUE_ROOT.
+# If not set, use the auto-detected repository root.
+PIQUE_ROOT="${PIQUE_ROOT:-$DETECTED_ROOT}"
+
+# Expand tilde (~) in PIQUE_ROOT if present.
+# Bash does not expand ~ inside quoted variables or exports.
+if [[ "$PIQUE_ROOT" == "~"* ]]; then
+    PIQUE_ROOT="$HOME${PIQUE_ROOT#\~}"
+fi
+
+if [ ! -d "$PIQUE_ROOT" ]; then
+    echo "Error: PIQUE_ROOT does not exist: $PIQUE_ROOT" >&2
+    exit 1
+fi
 
 PROFILES_DIR="$PIQUE_ROOT/profiles"
 SESSIONS_DIR="$PIQUE_ROOT/sessions"
 
+if [ ! -d "$PROFILES_DIR" ]; then
+    echo "Error: profiles directory not found: $PROFILES_DIR" >&2
+    echo "" >&2
+    echo "Repository root: $PIQUE_ROOT" >&2
+    echo "Set PIQUE_ROOT to the correct location," >&2
+    echo "or check your installation." >&2
+    exit 1
+fi
+
 # --- Helper functions ---
+
+get_profile_description() {
+    local settings_file="$1"
+    python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    desc = d.get('description', '')
+    print(desc if desc else '(no description)')
+except Exception:
+    print('(no description)')
+" "$settings_file" 2>/dev/null || echo "(no description)"
+}
 
 list_profiles() {
     echo "Available profiles:"
     echo ""
     for dir in "$PROFILES_DIR"/*/; do
-        name=$(basename "$dir")
-        desc=""
+        [ -d "$dir" ] || continue
+        local name
+        name="$(basename "$dir")"
+        local desc
         if [ -f "$dir/settings.json" ]; then
-            desc=$(python3 -c "
-import json
-try:
-    with open('$dir/settings.json') as f:
-        d = json.load(f)
-    print(d.get('description', ''))
-except Exception:
-    pass
-" 2>/dev/null || true)
-        fi
-        if [ -z "$desc" ]; then
-            desc="(no description)"
+            desc="$(get_profile_description "$dir/settings.json")"
+        else
+            desc="(no settings.json)"
         fi
         printf "  %-16s %s\\n" "$name" "$desc"
     done
 }
 
 diff_profiles() {
-    local a="${1:?Specify first profile}"
-    local b="${2:?Specify second profile}"
+    if [ $# -lt 2 ]; then
+        echo "Usage: pique --diff <profile-a> <profile-b>" >&2
+        echo "" >&2
+        echo "Example:" >&2
+        echo "  pique --diff minimal development" >&2
+        exit 1
+    fi
+
+    local a="$1"
+    local b="$2"
     local dir_a="$PROFILES_DIR/$a"
     local dir_b="$PROFILES_DIR/$b"
 
     if [ ! -d "$dir_a" ]; then
         echo "Error: profile '$a' not found." >&2
+        echo "Searched: $dir_a" >&2
         exit 1
     fi
     if [ ! -d "$dir_b" ]; then
         echo "Error: profile '$b' not found." >&2
+        echo "Searched: $dir_b" >&2
         exit 1
     fi
 
@@ -79,9 +121,7 @@ diff_profiles() {
     diff -ru "$dir_a" "$dir_b" || true
 }
 
-# --- Argument parsing ---
-
-if [ $# -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+show_help() {
     cat <<EOF
 pique — Launch Pi with a selected profile
 
@@ -89,15 +129,27 @@ Usage:
   pique <profile> [pi-arguments...]   Launch Pi with profile
   pique --list                        List available profiles
   pique --diff <a> <b>                Compare two profiles
+  pique --help                        Show this help
 
 Profiles directory: $PROFILES_DIR
 Repository: $PIQUE_ROOT
+
+Environment variables:
+  PIQUE_ROOT                          Override repository root
+  PI_CODING_AGENT_DIR                 Set by this script, points to profile
 
 Examples:
   pique development                   Start Pi with development profile
   pique research --print "Analyze"    Start Pi with research profile, print mode
   pique minimal --version             Check Pi version with minimal profile
+  pique --diff minimal development    Compare two profiles
 EOF
+}
+
+# --- Argument parsing ---
+
+if [ $# -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    show_help
     exit 0
 fi
 
@@ -112,6 +164,14 @@ if [ "$1" = "--diff" ]; then
     exit 0
 fi
 
+if [ "$1" = "--version" ] || [ "$1" = "-V" ]; then
+    echo "pique (from $PIQUE_ROOT)"
+    if command -v pi >/dev/null 2>&1; then
+        pi --version 2>/dev/null || true
+    fi
+    exit 0
+fi
+
 # --- Launch with profile ---
 
 PROFILE_NAME="$1"
@@ -119,7 +179,7 @@ PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
 
 if [ ! -d "$PROFILE_DIR" ]; then
     echo "Error: profile '$PROFILE_NAME' not found." >&2
-    echo "Searched: $PROFILES_DIR" >&2
+    echo "Searched: $PROFILE_DIR" >&2
     echo "" >&2
     list_profiles >&2
     exit 1
@@ -131,7 +191,8 @@ shift  # Remove profile name from arguments
 
 export PI_CODING_AGENT_DIR="$PROFILE_DIR"
 
-# Set sessions directory if profile has one
+# Set sessions directory if it exists or if the sessions root exists.
+# This keeps session data separate between profiles.
 PROFILE_SESSIONS="$SESSIONS_DIR/$PROFILE_NAME"
 if [ -d "$PROFILE_SESSIONS" ] || [ -d "$SESSIONS_DIR" ]; then
     mkdir -p "$PROFILE_SESSIONS"
@@ -142,12 +203,12 @@ fi
 
 PI_BIN=""
 
-# Try mise from the pique repository
-if command -v mise >/dev/null 2>&1; then
-    PI_BIN="$(cd "$PIQUE_ROOT" && mise which pi 2>/dev/null || true)"
+# Try mise from the pique repository (if mise is available and root exists)
+if command -v mise >/dev/null 2>&1 && [ -f "$PIQUE_ROOT/mise.toml" ]; then
+    PI_BIN="$(cd "$PIQUE_ROOT" 2>/dev/null && mise which pi 2>/dev/null || true)"
 fi
 
-# Fallback to PATH
+# Fallback to system PATH
 if [ -z "$PI_BIN" ] || [ ! -x "$PI_BIN" ]; then
     PI_BIN="$(command -v pi 2>/dev/null || true)"
 fi
@@ -155,12 +216,14 @@ fi
 if [ -z "$PI_BIN" ]; then
     echo "Error: 'pi' binary not found." >&2
     echo "" >&2
-    echo "Install Pi:" >&2
+    echo "Install Pi via mise (recommended):" >&2
     echo "  cd $PIQUE_ROOT" >&2
     echo "  mise install" >&2
     echo "" >&2
     echo "Or install globally:" >&2
     echo "  curl -fsSL https://pi.dev/install.sh | sh" >&2
+    echo "" >&2
+    echo "Or add pi to your PATH." >&2
     exit 1
 fi
 

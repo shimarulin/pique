@@ -44,11 +44,39 @@ Run the installer:
 Or clone manually:
 
 ```bash
-git clone <repository-url> ~/.config/pique
-cd ~/.config/pique
+git clone <repository-url> "$HOME/.config/pique"
+cd "$HOME/.config/pique"
 mise trust
 mise install
-ln -sf ~/.config/pique/bin/pique ~/.local/bin/pique
+ln -sf "$HOME/.config/pique/bin/pique" "$HOME/.local/bin/pique"
+```
+
+### Installation to an Arbitrary Directory
+
+If you prefer to keep the repository somewhere other than `~/.config/pique`,
+for example in `~/projects/pi-configs` or inside your dotfiles, this works:
+
+```bash
+git clone <repository-url> "$HOME/projects/pi-configs"
+ln -sf "$HOME/projects/pi-configs/bin/pique" "$HOME/.local/bin/pique"
+```
+
+The `pique` script resolves symlinks and finds the repository automatically.
+The `~/.config/pique` directory is not required.
+
+Alternatively, you can symlink the entire repository:
+
+```bash
+ln -s "$PWD" "$HOME/.config/pique"
+```
+
+Then both `pique` and mise tasks (`cd "$HOME/.config/pique" && mise run list`)
+will work as with a standard installation.
+
+To override the path manually, use the environment variable:
+
+```bash
+export PIQUE_ROOT="$HOME/projects/pi-configs"
 ```
 
 ## Usage

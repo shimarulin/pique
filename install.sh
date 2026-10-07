@@ -6,8 +6,13 @@ set -euo pipefail
 # Creates launcher symlink in ~/.local/bin
 
 INSTALL_DIR="${PIQUE_INSTALL_DIR:-$HOME/.config/pique}"
-BIN_DIR="${HOME}/.local/bin"
+BIN_DIR="${HOME}/.local/bin}"
 COMMAND_NAME="pique"
+
+# Expand tilde in PIQUE_INSTALL_DIR if present
+if [[ "$INSTALL_DIR" == "~"* ]]; then
+    INSTALL_DIR="$HOME${INSTALL_DIR#\~}"
+fi
 
 echo "=== pique installer ==="
 echo ""
