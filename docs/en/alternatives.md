@@ -2,13 +2,14 @@
 
 ## Overview
 
-pique is not the only solution for managing Pi profiles. Several established tools exist. This document describes them and explains when to use each.
+pique is not the only way to manage Pi profiles. Several tools exist, and even a plain Git repository over `~/.pi/agent` can solve part of the problem. This document describes the alternatives and helps you choose.
 
 ## Comparison
 
 | Tool | Mechanism | Storage | Best For |
 |------|-----------|---------|----------|
-| **pique** (this project) | Thin launcher + `PI_CODING_AGENT_DIR` | Git repository | Curated library with evolution tracking |
+| **pique** (this project) | Thin launcher + `PI_CODING_AGENT_DIR` | Git repository, separate profiles | Single-purpose profile selection; parallel execution; extension independence |
+| **Git over `~/.pi/agent`** | Version control of the agent directory | Git repository, one active state | Simple versioning; single-profile workflows |
 | **pi-profile** (sovorn-c) | Launcher + `PI_CODING_AGENT_DIR` | `~/.pi/profiles/<name>/` | Isolated profiles with persistent memory |
 | **pi-profiles** (krzyzanowskim) | Launcher + `PI_CODING_AGENT_DIR` | `~/.pi/agent-profiles/<name>/` | Auth separation (personal/work) |
 | **pi-profiles-manager** (javinnav) | In-process extension, TUI | `~/.pi/agent/pi-profiles/` | Model route management within a session |
@@ -16,15 +17,43 @@ pique is not the only solution for managing Pi profiles. Several established too
 
 ## When to Use pique
 
-Use pique when:
+Use pique when you want:
 
-- You want your configurations in Git.
-- You compare profiles to evolve your setup.
-- You document decisions (ADRs).
-- You maintain a curated library over time.
-- You need reproducibility across machines.
+- To run Pi with different profiles in parallel.
+- Profile switching that does not depend on installed extensions.
+- Reproducible runtime environment through version pinning (mise.lock).
+- A minimal tool that solves exactly one problem.
 
 ## When to Use Alternatives
+
+### Git over `~/.pi/agent`
+
+Keep the Pi agent directory itself under version control.
+
+This works well when:
+
+- You use one configuration at a time.
+- You want simple versioning without additional tools.
+- You don't need to run multiple profiles simultaneously.
+- You are comfortable switching configurations via Git operations (checkout, branches).
+
+Limitations:
+
+- Only one profile is active at a time.
+- Switching requires Git operations, not a single command.
+- Runtime versions (Node.js, Pi itself) are not pinned.
+- Sessions and auth are mixed between configurations unless carefully managed.
+
+Setup:
+
+```bash
+cd ~/.pi/agent
+git init
+git add -A
+git commit -m "Initial Pi configuration"
+```
+
+To experiment, create a branch, make changes, and merge back when satisfied.
 
 ### pi-profile (sovorn-c)
 
@@ -37,6 +66,12 @@ Use when you need:
 
 Install: `npm install -g @sovorn/pi-profile`
 
+Limitations:
+
+- Profiles stored outside version control (unless you add Git yourself).
+- No parallel execution of different profiles from the same installation.
+- Runtime versions not pinned.
+
 ### pi-profiles (krzyzanowskim)
 
 Use when you need:
@@ -48,6 +83,12 @@ Use when you need:
 
 Install: `mise use -g npm:@krzyzanowskim/pi-profiles@latest`
 
+Limitations:
+
+- Focused on auth separation; other configuration aspects secondary.
+- No version control of profiles.
+- Runtime versions not pinned.
+
 ### pi-profiles-manager (javinnav)
 
 Use when you need:
@@ -58,6 +99,13 @@ Use when you need:
 - In-session profile switching.
 
 Install: `pi install npm:pi-profiles-manager`
+
+Limitations:
+
+- Works only inside a running Pi session.
+- Requires the extension to be installed and loaded.
+- No version control of profiles.
+- Cannot launch Pi; manages configuration only after startup.
 
 ### pi-profile-switch (VincentFF)
 
@@ -71,34 +119,51 @@ Use when you need:
 
 Install: `npm install -g pi-profile-switch`
 
+Limitations:
+
+- More complex setup (JSON profile descriptors).
+- Requires understanding of Pi's resource model.
+- No version control of profiles (unless you add Git yourself).
+- Runtime versions not pinned.
+
 ## Combining Tools
 
 You can use pique alongside other tools:
 
 ### pique + pi-profile-switch
 
-Use pique for the Git-versioned library. Use pi-profile-switch for in-session flexibility.
+Use pique for profile storage and launch. Use pi-profile-switch for in-session flexibility.
 
-1. Store profiles in pique repository.
+1. Store profiles in the pique repository.
 2. Use `pique <profile>` to start Pi.
 3. Inside the session, use `/profile use <name>` from pi-profile-switch for temporary switches.
 
 ### pique + pi-profile
 
-Use pique for curated configurations. Use pi-profile for isolated working profiles with memory.
+Use pique for versioned configurations. Use pi-profile for isolated working profiles with memory.
 
-1. Maintain curated profiles in pique.
-2. Use pi-profile to create working copies.
-3. Import useful changes back to pique.
+1. Maintain configurations in pique.
+2. Use pi-profile to create working copies with persistent memory.
+3. Import useful changes back to pique via Git.
 
-## Decision
+### pique + Git over ~/.pi/agent
 
-The choice depends on your primary need:
+Use Git for direct `~/.pi/agent` management alongside pique profiles.
 
-| Primary Need | Recommendation |
-|--------------|----------------|
-| Evolution and comparison | pique |
+1. Keep your default Pi configuration under Git in `~/.pi/agent`.
+2. Use pique profiles for specialized configurations.
+3. Merge useful changes between them.
+
+## Decision Guide
+
+| Your Priority | Recommendation |
+|---------------|----------------|
+| Minimal, single-purpose tool | pique |
+| Parallel profile execution | pique |
+| No extension dependencies | pique |
+| Reproducible runtime | pique |
+| Simple versioning, no new tools | Git over `~/.pi/agent` |
+| Persistent memory | pi-profile |
 | Auth isolation | pi-profiles |
 | In-session switching | pi-profile-switch |
-| Model routing | pi-profiles-manager |
-| Persistent memory | pi-profile |
+| Model routing TUI | pi-profiles-manager |
