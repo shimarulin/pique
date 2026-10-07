@@ -1,34 +1,31 @@
 # pique
 
-A curated library of Pi coding agent profiles, with evolution tracking through Git.
+> [Русский](README.ru.md)
 
-## What This Does
+A collection of user-level configurations (profiles) for the [Pi Coding Agent](https://github.com/earendil-works/pi), with a tool to manage launching `Pi` with a selected configuration.
 
-pique stores multiple Pi profiles. Each profile is a complete agent-level configuration. Use a profile to start Pi with pre-tested settings in any project directory.
+## What It Does
+
+pique stores any number of [Pi Coding Agent](https://github.com/earendil-works/pi) profiles and launches Pi with a selected profile. Each profile is a complete user-level configuration.
 
 ## Why
 
-- Start new projects with proven configurations.
-- Compare profiles to understand what works best.
-- Collect best practices for AI-assisted development.
-- Evolve your agent setup over time.
-- Document decisions through Architecture Decision Records.
-- Maintain a knowledge base that survives machine changes.
+- Transfer Pi configurations between machines.
+- Ensure stability of the agent execution environment.
+- Explore different configurations and compare them to find optimal solutions.
+- Evolve agent configurations without risking breakage of current workflows.
+- Use the most suitable configuration for each task.
 
 ## How It Differs
 
-The profile switching mechanism is a solved problem — several tools do it well. The value of pique is elsewhere:
+Profile switching is a solved problem — several Pi extensions do it well. You can also keep `~/.pi/agent` under Git version control, which solves versioning and storing multiple profiles via extensions. The value of pique is different:
 
-| Aspect | pique | Other tools |
-|--------|-------|-------------|
-| **Source of truth** | Git repository | Local files |
-| **History** | Full Git history, branches, blame | None or export/import |
-| **Comparison** | `git diff`, `pique --diff` | Not built in |
-| **Decision documentation** | ADRs with rationale | Not available |
-| **Knowledge preservation** | Why decisions were made | Just the what |
-| **Reproducibility** | mise.lock pins exact versions | Varies |
+- Solves exactly one problem: pique does not add agent memory or anything else — only profile selection.
+- Allows running Pi with different profiles in parallel.
+- Does not depend on installed extensions, keeping the configuration minimal.
+- Preserves environment reproducibility through version pinning via mise.lock.
 
-See [Alternatives](docs/en/alternatives.md) for detailed comparison of existing tools and when to use each.
+See [Alternatives](docs/en/alternatives.md) for a detailed comparison of existing tools.
 
 ## Requirements
 
@@ -102,9 +99,9 @@ The output shows files that exist only in one profile and content differences in
 
 | Name | Purpose |
 |------|---------|
-| `minimal` | Base setup. No extensions. Low thinking. |
-| `development` | Active coding. Medium thinking. File tools. |
-| `research` | Analysis. High thinking. Extended output. |
+| `minimal` | Base setup. No extensions. Low thinking level. |
+| `development` | Active development. Medium thinking. File tools. |
+| `research` | Analysis and research. High thinking. Extended output. |
 
 ## How It Works
 
@@ -139,7 +136,7 @@ Pi reads `.pi/settings.json` from the project directory. These settings override
 }
 ```
 
-This changes the model for this project only. The profile stays unchanged.
+This changes the model for this project only. The profile remains unchanged.
 
 ## Management Tasks
 
@@ -152,49 +149,6 @@ mise run diff -- minimal development  # Compare profiles
 mise run new -- my-profile development  # Create new profile
 mise run sync-shared             # Copy shared skills to profiles
 ```
-
-## Architecture Decision Records
-
-Significant decisions are documented in `docs/decisions/` using MADR 4.0.0 format. Each ADR records:
-
-- The context and problem
-- Options considered
-- Why the chosen option won
-- Consequences (positive and negative)
-- How to verify the decision is still valid
-
-Current decisions:
-
-| ADR | Decision |
-|-----|----------|
-| [0001](docs/decisions/0001-use-isolation-via-pi-coding-agent-dir.md) | Use `PI_CODING_AGENT_DIR` for profile isolation |
-| [0002](docs/decisions/0002-use-git-first-approach.md) | Use Git-first approach for configuration management |
-| [0003](docs/decisions/0003-use-thin-launcher-not-extension.md) | Use thin launcher, not in-process extension |
-| [0004](docs/decisions/0004-use-madr-for-decision-records.md) | Use MADR 4.0.0 for decision records |
-| [0005](docs/decisions/0005-use-mise-for-runtime-management.md) | Use mise for runtime management |
-| [0006](docs/decisions/0006-store-profiles-in-config-directory.md) | Store profiles in `~/.config/pique/` |
-
-See the [ADR guide](docs/en/adr-guide.md) for how to write new ones.
-
-## Profile Comparison
-
-The `comparison/` directory contains test cases for evaluating profiles:
-
-| Case | What it tests |
-|------|---------------|
-| `code-quality` | Correctness, completeness, style of responses |
-| `speed` | Response time and tool call efficiency |
-| `token-usage` | Token consumption for equivalent tasks |
-
-Run comparisons:
-
-```bash
-./comparison/scripts/run-comparison.sh minimal development
-```
-
-Results are stored in `comparison/results/` and committed for reference.
-
-See [Comparison guide](docs/en/comparison.md) for details.
 
 ## Repository Structure
 
@@ -213,43 +167,23 @@ See [Comparison guide](docs/en/comparison.md) for details.
 │   ├── en/                # English documentation
 │   ├── ru/                # Russian documentation
 │   └── decisions/         # Architecture Decision Records
-├── comparison/            # Comparative test cases
-│   ├── cases/             # Test prompts and criteria
-│   ├── scripts/           # Automation scripts
-│   └── results/           # Comparison outputs
 └── install.sh             # Installer
 ```
 
 ## Documentation
 
-### English
-
-- [Usage guide](docs/en/usage.md)
-- [Architecture](docs/en/architecture.md)
-- [Adding profiles](docs/en/adding-profiles.md)
-- [Profile comparison](docs/en/comparison.md)
-- [ADR guide](docs/en/adr-guide.md)
-- [Alternative tools](docs/en/alternatives.md)
-
-### Русский
-
-- [Руководство по использованию](docs/ru/usage.md)
-- [Архитектура](docs/ru/architecture.md)
-- [Добавление профилей](docs/ru/adding-profiles.md)
-- [Сравнение профилей](docs/ru/comparison.md)
-- [Руководство по ADR](docs/ru/adr-guide.md)
-- [Альтернативные инструменты](docs/ru/alternatives.md)
+All English documentation is in [docs/en/](docs/en/README.md).
 
 ## Combining with Other Tools
 
-pique focuses on the curated library. For other needs, combine with existing tools:
+pique focuses on the configuration collection. For other needs, combine with existing tools:
 
 | Need | Tool | How |
 |------|------|-----|
-| In-session switching | [pi-profile-switch](https://github.com/VincentFF/pi-profile-switch) | Use pique to start, `/profile use` inside session |
-| Auth isolation | [pi-profiles](https://github.com/krzyzanowskim/pi-profiles) | Use for work/personal separation |
+| In-session switching | [pi-profile-switch](https://github.com/VincentFF/pi-profile-switch) | Start via pique, use `/profile use` inside session |
+| Auth isolation | [pi-profiles](https://github.com/krzyzanowskim/pi-profiles) | For work/personal separation |
 | Model routing TUI | [pi-profiles-manager](https://github.com/javinnav/pi-profiles-manager) | Install alongside |
-| Persistent memory | [pi-profile](https://github.com/sovorn-c/pi-profile) | Use for memory-heavy workflows |
+| Persistent memory | [pi-profile](https://github.com/sovorn-c/pi-profile) | For memory-heavy workflows |
 
 See [Alternatives](docs/en/alternatives.md) for details.
 
