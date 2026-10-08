@@ -6,6 +6,7 @@
 
 - [Usage guide](usage.md) — how to launch Pi with profiles
 - [Architecture](architecture.md) — how the project works and why
+- [The pique script](pique-script.md) — how bin/pique works, .env loading, template rendering
 - [Adding profiles](adding-profiles.md) — how to create a new profile
 - [Providers and models](providers-and-models.md) — custom OpenAI-compatible providers, .env keys, hiding built-ins
 - [ADR guide](adr-guide.md) — how to document decisions
