@@ -191,6 +191,29 @@ shift  # Remove profile name from arguments
 
 export PI_CODING_AGENT_DIR="$PROFILE_DIR"
 
+# Load .env file if it exists in the profile directory.
+# This makes API keys available without exporting them manually.
+if [ -f "$PROFILE_DIR/.env" ]; then
+    # Try dotenvx first (recommended)
+    if command -v dotenvx >/dev/null 2>&1; then
+        # dotenvx will be used as exec wrapper below
+        :
+    else
+        # Fallback: parse .env manually (simple KEY=VALUE format)
+        while IFS='=' read -r key value; do
+            # Skip comments and empty lines
+            [[ "$key" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "$key" ]] && continue
+            # Trim whitespace
+            key="$(echo "$key" | xargs)"
+            # Skip if already set in environment
+            if [ -z "${!key:-}" ]; then
+                export "$key=$value"
+            fi
+        done < "$PROFILE_DIR/.env"
+    fi
+fi
+
 # Set sessions directory if it exists or if the sessions root exists.
 # This keeps session data separate between profiles.
 PROFILE_SESSIONS="$SESSIONS_DIR/$PROFILE_NAME"
@@ -229,4 +252,9 @@ fi
 
 # --- Launch Pi ---
 
-exec "$PI_BIN" "$@"
+# If dotenvx is available and .env exists, use it as wrapper
+if [ -f "$PROFILE_DIR/.env" ] && command -v dotenvx >/dev/null 2>&1; then
+    exec dotenvx run --env-file="$PROFILE_DIR/.env" -- "$PI_BIN" "$@"
+else
+    exec "$PI_BIN" "$@"
+fi

@@ -1,0 +1,8 @@
+# Never commit real API keys
+.env
+
+# Pi sessions
+sessions/
+
+# Auth files
+auth.json

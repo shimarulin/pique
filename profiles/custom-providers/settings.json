@@ -1,0 +1,9 @@
+{
+  "description": "Multiple OpenAI-compatible providers. Built-in providers disabled. API keys from .env.",
+  "defaultProvider": "openrouter",
+  "defaultModel": "anthropic/claude-sonnet-4-5",
+  "defaultThinkingLevel": "medium",
+  "enabledTools": ["read", "edit", "bash", "glob", "grep"],
+  "autoCompact": true,
+  "compactThreshold": 0.75
+}

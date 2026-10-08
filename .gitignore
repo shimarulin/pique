@@ -10,8 +10,13 @@ sessions/
 **/credentials.json
 **/env
 
-# Comparison results are committed, but temporary files are not
-comparison/results/*.tmp
+# Environment files with API keys (never commit)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# OS files
+.DS_Store
 comparison/results/*~ 
 
 # OS files
