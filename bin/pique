@@ -193,26 +193,98 @@ export PI_CODING_AGENT_DIR="$PROFILE_DIR"
 
 # Load .env file if it exists in the profile directory.
 # This makes API keys available without exporting them manually.
-if [ -f "$PROFILE_DIR/.env" ]; then
-    # Try dotenvx first (recommended)
-    if command -v dotenvx >/dev/null 2>&1; then
-        # dotenvx will be used as exec wrapper below
-        :
+# Existing shell variables are never overwritten.
+load_env_file() {
+    local env_file="$1"
+    [ -f "$env_file" ] || return 0
+
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${key// /}" ]] && continue
+
+        # Trim whitespace
+        key="$(echo "$key" | xargs)"
+
+        # Skip if already set in environment
+        if [ -z "${!key:-}" ]; then
+            export "$key=$value"
+        fi
+    done < "$env_file"
+}
+
+# Render a template file with environment variable substitution.
+# Replaces ${VAR} and $VAR with values from the current environment.
+# Writes the result to the destination only if the content changed.
+render_template() {
+    local template="$1"
+    local destination="$2"
+
+    [ -f "$template" ] || return 0
+
+    local rendered
+    rendered="$(sed -e 's/\${\([A-Za-z_][A-Za-z0-9_]*\)}/\1/g' "$template")"
+
+    # Check if we need to use perl for more complex substitution
+    if command -v perl >/dev/null 2>&1; then
+        rendered="$(perl -pe 's/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/$ENV{$1} \/\/ ""/ge; s/\$([A-Za-z_][A-Za-z0-9_]*)/$ENV{$1} \/\/ ""/ge' "$template")"
     else
-        # Fallback: parse .env manually (simple KEY=VALUE format)
-        while IFS='=' read -r key value; do
-            # Skip comments and empty lines
-            [[ "$key" =~ ^[[:space:]]*# ]] && continue
-            [[ -z "$key" ]] && continue
-            # Trim whitespace
-            key="$(echo "$key" | xargs)"
-            # Skip if already set in environment
-            if [ -z "${!key:-}" ]; then
-                export "$key=$value"
-            fi
-        done < "$PROFILE_DIR/.env"
+        # Fallback: use envsubst if available, otherwise sed
+        if command -v envsubst >/dev/null 2>&1; then
+            rendered="$(envsubst < "$template")"
+        else
+            # Basic sed substitution (limited, but works for simple cases)
+            rendered="$(sed -e 's/\${\([A-Za-z_][A-Za-z0-9_]*\)}/\1/g' "$template")"
+        fi
     fi
+
+    # Write only if changed
+    if [ ! -f "$destination" ] || ! diff -q <(echo "$rendered") "$destination" >/dev/null 2>&1; then
+        echo "$rendered" > "$destination"
+        return 0  # File was updated
+    fi
+    return 1  # No changes
+}
+
+# Render profile templates if template files exist.
+# Template files: models.json.template, settings.json.template
+# Rendered to: models.json, settings.json (in the profile directory)
+render_profile_templates() {
+    local profile_dir="$1"
+    local updated=false
+
+    if [ -f "$profile_dir/models.json.template" ]; then
+        if render_template "$profile_dir/models.json.template" "$profile_dir/models.json"; then
+            updated=true
+            echo "Rendered: models.json" >&2
+        fi
+    fi
+
+    if [ -f "$profile_dir/settings.json.template" ]; then
+        if render_template "$profile_dir/settings.json.template" "$profile_dir/settings.json"; then
+            updated=true
+            echo "Rendered: settings.json" >&2
+        fi
+    fi
+
+    # If any file was rendered, print a note
+    if [ "$updated" = true ]; then
+        echo "Profile configuration rendered from templates." >&2
+        echo "Templates are in the profile directory (.template suffix)." >&2
+        echo "Set environment variables before running pique to customize." >&2
+    fi
+}
+
+# Load .env from the profile directory
+load_env_file "$PROFILE_DIR/.env"
+
+# Load .env from the pique root (if it exists and profile doesn't have one)
+if [ ! -f "$PROFILE_DIR/.env" ] && [ -f "$PIQUE_ROOT/.env" ]; then
+    load_env_file "$PIQUE_ROOT/.env"
 fi
+
+# Render profile templates
+render_profile_templates "$PROFILE_DIR"
 
 # Set sessions directory if it exists or if the sessions root exists.
 # This keeps session data separate between profiles.

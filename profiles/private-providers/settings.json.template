@@ -1,0 +1,9 @@
+{
+  "description": "Private corporate providers. Endpoints and keys from environment.",
+  "defaultProvider": "primary",
+  "defaultModel": "${MODEL_PRIMARY_ID}",
+  "defaultThinkingLevel": "medium",
+  "enabledTools": ["read", "edit", "bash", "glob", "grep"],
+  "autoCompact": true,
+  "compactThreshold": 0.75
+}

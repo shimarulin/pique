@@ -1,0 +1,60 @@
+{
+  "providers": {
+    "primary": {
+      "baseUrl": "${PROVIDER_PRIMARY_BASE_URL}",
+      "api": "openai-completions",
+      "apiKey": "${PROVIDER_PRIMARY_API_KEY}",
+      "models": [
+        {
+          "id": "${MODEL_PRIMARY_ID}",
+          "name": "Primary Model",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": ${MODEL_PRIMARY_CONTEXT_WINDOW},
+          "maxTokens": ${MODEL_PRIMARY_MAX_TOKENS},
+          "cost": {
+            "input": ${MODEL_PRIMARY_COST_INPUT},
+            "output": ${MODEL_PRIMARY_COST_OUTPUT},
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "${MODEL_SECONDARY_ID}",
+          "name": "Secondary Model",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": ${MODEL_SECONDARY_CONTEXT_WINDOW},
+          "maxTokens": ${MODEL_SECONDARY_MAX_TOKENS},
+          "cost": {
+            "input": ${MODEL_SECONDARY_COST_INPUT},
+            "output": ${MODEL_SECONDARY_COST_OUTPUT},
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
+    "fallback": {
+      "baseUrl": "${PROVIDER_FALLBACK_BASE_URL}",
+      "api": "openai-completions",
+      "apiKey": "${PROVIDER_FALLBACK_API_KEY}",
+      "models": [
+        {
+          "id": "${MODEL_PRIMARY_ID}",
+          "name": "Primary Model (Fallback)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": ${MODEL_PRIMARY_CONTEXT_WINDOW},
+          "maxTokens": ${MODEL_PRIMARY_MAX_TOKENS},
+          "cost": {
+            "input": ${MODEL_PRIMARY_COST_INPUT},
+            "output": ${MODEL_PRIMARY_COST_OUTPUT},
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    }
+  }
+}
