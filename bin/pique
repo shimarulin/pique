@@ -10,8 +10,10 @@ set -euo pipefail
 #
 # This script:
 #   1. Resolves the profile directory.
-#   2. Sets PI_CODING_AGENT_DIR.
-#   3. Runs Pi in the current working directory.
+#   2. Loads .env if present (profile or repository root).
+#   3. Renders .template files if present.
+#   4. Sets PI_CODING_AGENT_DIR.
+#   5. Runs Pi in the current working directory.
 #
 # The repository can be located anywhere. This script resolves symlinks
 # and finds the real repository root. Set PIQUE_ROOT to override.
@@ -60,6 +62,102 @@ fi
 
 # --- Helper functions ---
 
+# Load a .env file into the environment.
+# Existing shell variables are never overwritten.
+# Handles: KEY=value, comments (#), empty lines.
+load_env_file() {
+    local env_file="$1"
+    [ -f "$env_file" ] || return 0
+
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${key// /}" ]] && continue
+
+        # Trim whitespace from key
+        key="$(echo "$key" | xargs)"
+
+        # Trim whitespace from value
+        value="${value%\"}"
+        value="${value#\"}"
+        value="${value%\'}"
+        value="${value#\'}"
+
+        # Skip if already set in environment
+        if [ -z "${!key:-}" ]; then
+            export "$key=$value"
+        fi
+    done < "$env_file"
+}
+
+# Render a template file with environment variable substitution.
+# Replaces ${VAR} and $VAR with values from the current environment.
+# Requires perl or envsubst for substitution.
+# Writes the result to the destination only if the content changed.
+render_template() {
+    local template="$1"
+    local destination="$2"
+
+    [ -f "$template" ] || return 1
+
+    # Check we have a substitution tool
+    if ! command -v perl >/dev/null 2>&1 && ! command -v envsubst >/dev/null 2>&1; then
+        echo "Error: Cannot render template $template" >&2
+        echo "Neither perl nor envsubst is available." >&2
+        echo "Install one of them, or create $destination manually." >&2
+        return 1
+    fi
+
+    local rendered
+
+    if command -v envsubst >/dev/null 2>&1; then
+        # envsubst handles both $VAR and ${VAR}
+        rendered="$(envsubst < "$template")"
+    else
+        # perl handles both $VAR and ${VAR}
+        rendered="$(perl -pe '
+            s/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/$ENV{$1} \/\/ ""/ge;
+            s/\$([A-Za-z_][A-Za-z0-9_]*)/$ENV{$1} \/\/ ""/ge;
+        ' "$template")"
+    fi
+
+    # Write only if changed
+    if [ ! -f "$destination" ] || ! diff -q <(echo "$rendered") "$destination" >/dev/null 2>&1; then
+        echo "$rendered" > "$destination"
+        return 0  # File was updated
+    fi
+    return 1  # No changes
+}
+
+# Render profile templates if template files exist.
+# Template files: *.template (e.g., models.json.template, settings.json.template)
+# Rendered to: the same name without .template suffix.
+render_profile_templates() {
+    local profile_dir="$1"
+    local updated=false
+
+    # Find all .template files in the profile directory
+    for template in "$profile_dir"/*.template; do
+        [ -f "$template" ] || continue
+
+        # Derive destination name
+        local destination="${template%.template}"
+
+        if render_template "$template" "$destination"; then
+            updated=true
+            echo "Rendered: $(basename "$destination")" >&2
+        fi
+    done
+
+    # If any file was rendered, print a note
+    if [ "$updated" = true ]; then
+        echo "" >&2
+        echo "Profile configuration rendered from templates." >&2
+        echo "Templates are in the profile directory (.template suffix)." >&2
+        echo "Set environment variables before running pique to customize." >&2
+    fi
+}
+
 get_profile_description() {
     local settings_file="$1"
     python3 -c "
@@ -84,6 +182,8 @@ list_profiles() {
         local desc
         if [ -f "$dir/settings.json" ]; then
             desc="$(get_profile_description "$dir/settings.json")"
+        elif [ -f "$dir/settings.json.template" ]; then
+            desc="(template, needs rendering)"
         else
             desc="(no settings.json)"
         fi
@@ -118,7 +218,37 @@ diff_profiles() {
 
     echo "=== $a <-> $b ==="
     echo ""
-    diff -ru "$dir_a" "$dir_b" || true
+
+    # Exclude rendered files and .env from diff
+    diff -ru \
+        --exclude="*.json" \
+        --exclude=".env" \
+        --exclude="auth.json" \
+        --exclude="sessions" \
+        "$dir_a" "$dir_b" || true
+
+    # Diff templates separately (they are the source of truth)
+    echo "--- Template files ---"
+    for template_a in "$dir_a"/*.template; do
+        [ -f "$template_a" ] || continue
+        local name
+        name="$(basename "$template_a")"
+        local template_b="$dir_b/$name"
+        if [ -f "$template_b" ]; then
+            diff -u "$template_a" "$template_b" || true
+        else
+            echo "Only in $a: $name"
+        fi
+    done
+    for template_b in "$dir_b"/*.template; do
+        [ -f "$template_b" ] || continue
+        local name
+        name="$(basename "$template_b")"
+        local template_a="$dir_a/$name"
+        if [ ! -f "$template_a" ]; then
+            echo "Only in $b: $name"
+        fi
+    done
 }
 
 show_help() {
@@ -137,12 +267,20 @@ Repository: $PIQUE_ROOT
 Environment variables:
   PIQUE_ROOT                          Override repository root
   PI_CODING_AGENT_DIR                 Set by this script, points to profile
+  PI_CODING_AGENT_SESSION_DIR         Set if sessions directory exists
+
+Profile features:
+  .env                                Loaded before Pi starts
+  *.template                          Rendered with env vars before Pi starts
+  models.json                         Pi provider definitions
+  settings.json                       Pi settings (or settings.json.template)
 
 Examples:
   pique development                   Start Pi with development profile
   pique research --print "Analyze"    Start Pi with research profile, print mode
   pique minimal --version             Check Pi version with minimal profile
   pique --diff minimal development    Compare two profiles
+  pique --list                        Show available profiles
 EOF
 }
 
@@ -187,104 +325,23 @@ fi
 
 shift  # Remove profile name from arguments
 
-# --- Set environment ---
+# --- Load environment ---
 
-export PI_CODING_AGENT_DIR="$PROFILE_DIR"
-
-# Load .env file if it exists in the profile directory.
-# This makes API keys available without exporting them manually.
-# Existing shell variables are never overwritten.
-load_env_file() {
-    local env_file="$1"
-    [ -f "$env_file" ] || return 0
-
-    while IFS='=' read -r key value; do
-        # Skip comments and empty lines
-        [[ "$key" =~ ^[[:space:]]*# ]] && continue
-        [[ -z "${key// /}" ]] && continue
-
-        # Trim whitespace
-        key="$(echo "$key" | xargs)"
-
-        # Skip if already set in environment
-        if [ -z "${!key:-}" ]; then
-            export "$key=$value"
-        fi
-    done < "$env_file"
-}
-
-# Render a template file with environment variable substitution.
-# Replaces ${VAR} and $VAR with values from the current environment.
-# Writes the result to the destination only if the content changed.
-render_template() {
-    local template="$1"
-    local destination="$2"
-
-    [ -f "$template" ] || return 0
-
-    local rendered
-    rendered="$(sed -e 's/\${\([A-Za-z_][A-Za-z0-9_]*\)}/\1/g' "$template")"
-
-    # Check if we need to use perl for more complex substitution
-    if command -v perl >/dev/null 2>&1; then
-        rendered="$(perl -pe 's/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/$ENV{$1} \/\/ ""/ge; s/\$([A-Za-z_][A-Za-z0-9_]*)/$ENV{$1} \/\/ ""/ge' "$template")"
-    else
-        # Fallback: use envsubst if available, otherwise sed
-        if command -v envsubst >/dev/null 2>&1; then
-            rendered="$(envsubst < "$template")"
-        else
-            # Basic sed substitution (limited, but works for simple cases)
-            rendered="$(sed -e 's/\${\([A-Za-z_][A-Za-z0-9_]*\)}/\1/g' "$template")"
-        fi
-    fi
-
-    # Write only if changed
-    if [ ! -f "$destination" ] || ! diff -q <(echo "$rendered") "$destination" >/dev/null 2>&1; then
-        echo "$rendered" > "$destination"
-        return 0  # File was updated
-    fi
-    return 1  # No changes
-}
-
-# Render profile templates if template files exist.
-# Template files: models.json.template, settings.json.template
-# Rendered to: models.json, settings.json (in the profile directory)
-render_profile_templates() {
-    local profile_dir="$1"
-    local updated=false
-
-    if [ -f "$profile_dir/models.json.template" ]; then
-        if render_template "$profile_dir/models.json.template" "$profile_dir/models.json"; then
-            updated=true
-            echo "Rendered: models.json" >&2
-        fi
-    fi
-
-    if [ -f "$profile_dir/settings.json.template" ]; then
-        if render_template "$profile_dir/settings.json.template" "$profile_dir/settings.json"; then
-            updated=true
-            echo "Rendered: settings.json" >&2
-        fi
-    fi
-
-    # If any file was rendered, print a note
-    if [ "$updated" = true ]; then
-        echo "Profile configuration rendered from templates." >&2
-        echo "Templates are in the profile directory (.template suffix)." >&2
-        echo "Set environment variables before running pique to customize." >&2
-    fi
-}
-
-# Load .env from the profile directory
+# Load .env from the profile directory first (takes priority)
 load_env_file "$PROFILE_DIR/.env"
 
-# Load .env from the pique root (if it exists and profile doesn't have one)
+# Load .env from the pique root as fallback (if profile has none)
 if [ ! -f "$PROFILE_DIR/.env" ] && [ -f "$PIQUE_ROOT/.env" ]; then
     load_env_file "$PIQUE_ROOT/.env"
 fi
 
-# Render profile templates
+# --- Render templates ---
+
 render_profile_templates "$PROFILE_DIR"
+
+# --- Set environment ---
+
+export PI_CODING_AGENT_DIR="$PROFILE_DIR"
 
 # Set sessions directory if it exists or if the sessions root exists.
 # This keeps session data separate between profiles.
@@ -324,9 +381,4 @@ fi
 
 # --- Launch Pi ---
 
-# If dotenvx is available and .env exists, use it as wrapper
-if [ -f "$PROFILE_DIR/.env" ] && command -v dotenvx >/dev/null 2>&1; then
-    exec dotenvx run --env-file="$PROFILE_DIR/.env" -- "$PI_BIN" "$@"
-else
-    exec "$PI_BIN" "$@"
-fi
+exec "$PI_BIN" "$@"
