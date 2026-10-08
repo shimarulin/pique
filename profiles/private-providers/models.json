@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "primary": {
+      "baseUrl": "https://your-primary-gateway.example.com/v1",
+      "api": "openai-completions",
+      "apiKey": "$PROVIDER_PRIMARY_API_KEY",
+      "models": [
+        {
+          "id": "claude-sonnet-4-5",
+          "name": "Primary Model",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 64000,
+          "cost": {
+            "input": 3,
+            "output": 15,
+            "cacheRead": 0.3,
+            "cacheWrite": 3.75
+          }
+        }
+      ]
+    }
+  }
+}

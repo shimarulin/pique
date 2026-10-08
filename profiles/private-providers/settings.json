@@ -1,0 +1,9 @@
+{
+  "description": "Private providers. API key from .env, endpoint in models.json.",
+  "defaultProvider": "primary",
+  "defaultModel": "claude-sonnet-4-5",
+  "defaultThinkingLevel": "medium",
+  "enabledTools": ["read", "edit", "bash", "glob", "grep"],
+  "autoCompact": true,
+  "compactThreshold": 0.75
+}

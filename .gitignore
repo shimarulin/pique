@@ -17,10 +17,6 @@ sessions/
 
 # OS files
 .DS_Store
-comparison/results/*~ 
-
-# OS files
-.DS_Store
 Thumbs.db
 
 # Editors

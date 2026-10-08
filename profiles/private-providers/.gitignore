@@ -1,10 +1,8 @@
 # Never commit real values
 .env
 
-# Rendered files (generated from templates)
-models.json
-settings.json
-
 # Pi sessions
 sessions/
+
+# Auth files
 auth.json

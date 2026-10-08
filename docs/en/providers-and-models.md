@@ -6,11 +6,28 @@ This guide describes how to configure multiple OpenAI-compatible providers, disa
 
 Pi supports three mechanisms for provider configuration:
 
-1. **`models.json`** — the built-in, native format. No extensions required.
+1. **`models.json`** — the built-in, native format. No extensions required. **Recommended.**
 2. **`custom-providers.json`** — an alternative format via the `@esuyo/pi-esuyo-custom-provider` extension.
 3. **`pi.registerProvider()`** — a programmatic approach for TypeScript extensions.
 
-For most use cases, `models.json` is sufficient. The extension-based approach adds convenience features like automatic model discovery.
+For most use cases, `models.json` is sufficient. It is official, documented, and supported by third-party tools.
+
+## Environment Variable Interpolation
+
+Pi supports environment variable interpolation **only** in field values:
+
+| Field | Supports `$VAR`? |
+|-------|------------------|
+| `apiKey` | ✅ Yes |
+| `headers` values | ✅ Yes |
+| `baseUrl` | ❌ **No** |
+| Provider key (`"my-provider"`) | ❌ **No** (JSON key, not a value) |
+| `defaultModel` in settings.json | ❌ **No** |
+| `defaultProvider` in settings.json | ❌ **No** |
+
+This means you cannot hide a corporate endpoint URL behind an environment variable using Pi's native syntax.
+
+To manage endpoint URLs and other non-interpolatable values, edit `models.json` directly, use a Pi extension, or use an external tool. See [Provider Extensions](provider-extensions.md) for available options.
 
 ## API Key Syntax
 
@@ -83,7 +100,7 @@ This is the simplest approach. Pi reads provider definitions from `~/.pi/agent/m
 
 ### Loading Environment Variables
 
-Pi does not load `.env` files automatically. You have three options:
+Pi does not load `.env` files automatically. You have two options:
 
 **Option 1: Export in shell profile**
 
@@ -96,18 +113,25 @@ export DEEPSEEK_API_KEY="sk-..."
 
 Restart your terminal or run `source ~/.bashrc`.
 
-**Option 2: Source before launch**
+**Option 2: pique loads `.env` automatically**
+
+The `bin/pique` script loads `.env` files before starting Pi:
 
 ```bash
-source .env && pique custom-providers
+# From the profile directory (highest priority)
+profiles/custom-providers/.env
+
+# From the repository root (fallback)
+$PIQUE_ROOT/.env
 ```
 
-**Option 3: Use dotenvx**
+Existing shell variables are never overwritten. You can override `.env` values from the command line:
 
 ```bash
-npm install -g @dotenvx/dotenvx
-dotenvx run -- pique custom-providers
+OPENROUTER_API_KEY=temp-key pique custom-providers
 ```
+
+See [The pique script](pique-script.md) for details.
 
 ### Advantages
 
@@ -118,13 +142,12 @@ dotenvx run -- pique custom-providers
 
 ### Disadvantages
 
-- No automatic `.env` loading.
 - No automatic model discovery (you must list all models).
 - Built-in providers still appear if their env vars are set.
 
 ## Approach B: `models.json` + `pi-dotenv` Extension
 
-The `pi-dotenv` extension loads `~/.pi/agent/.env` into `process.env` at Pi startup.
+The `pi-dotenv` extension loads `~/.pi/agent/.env` into `process.env` at Pi startup. Useful if you launch Pi without pique.
 
 ### Installation
 
@@ -259,6 +282,8 @@ Create `~/.pi/agent/custom-providers.json`:
 | `sendSessionHeaders` | Send per-conversation headers |
 | `compat` | Same compatibility flags as `models.json` |
 
+**Limitation:** discovered models get default metadata (zeros for cost, false for reasoning). The `/models` endpoint returns only model IDs, not capabilities.
+
 ### Advantages
 
 - Automatic model discovery (`fetchModels: true`).
@@ -269,6 +294,7 @@ Create `~/.pi/agent/custom-providers.json`:
 
 - Requires one extension.
 - Additional abstraction layer over Pi's native format.
+- No metadata enrichment for discovered models.
 - Same `.env` limitations as Approach A.
 
 ## Hiding Built-in Providers
@@ -350,6 +376,14 @@ Only listed providers will be available; all others will be suppressed.
 
 The extension removes API key environment variables for non-enabled providers before Pi's model registry loads. After the registry is resolved, env vars are restored so they remain accessible to bash commands and other tools.
 
+### Method 4: `pi-provider-allowlist` Extension
+
+Restricts Pi to an allowlist or blocklist of providers via the `/providers-allowlist` wizard.
+
+```bash
+pi install npm:pi-provider-allowlist
+```
+
 ### Comparison of Hiding Methods
 
 | Method | Pros | Cons |
@@ -357,6 +391,7 @@ The extension removes API key environment variables for non-enabled providers be
 | No auth configured | No extension needed | Doesn't work if env vars are set |
 | `pi-hide-providers` | Complete removal; blocklist; glob patterns; immediate effect | Monkey-patches internals |
 | `@mcowger/pi-suppress-providers` | Suppresses env vars; restores after load | Allowlist (must list wanted providers) |
+| `pi-provider-allowlist` | Allowlist/blocklist; wizard UI | Requires extension |
 | `enabledModels` in settings.json | Built-in; no extension | Allowlist; verbose for many models |
 
 ## Combined Approach
@@ -393,10 +428,10 @@ Put `pi-dotenv` first in `packages`:
 
 | Your Priority | Recommended Approach |
 |---------------|----------------------|
-| Minimal dependencies | A: Only `models.json` + shell exports |
-| Automatic `.env` loading | B: `models.json` + `pi-dotenv` |
-| Model auto-discovery | D: `custom-providers.json` + `@esuyo` |
+| Minimal dependencies | A: Only `models.json` + pique's `.env` loading |
+| Automatic `.env` loading without pique | B: `models.json` + `pi-dotenv` |
+| Model auto-discovery | D: `custom-providers.json` + `@esuyo` or see [Provider Extensions](provider-extensions.md) |
 | Hide built-in providers | A/B/C/D + `pi-hide-providers` |
-| Everything | B + D + E combined |
+| Everything | Combined approach above |
 
-For pique profiles, Approach B (`models.json` + `pi-dotenv`) offers the best balance of simplicity and convenience.
+For pique profiles, Approach A (`models.json` + pique's built-in `.env` loading) is sufficient. The script loads `.env` before Pi starts, so no extension is needed for basic key management.
