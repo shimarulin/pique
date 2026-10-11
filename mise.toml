@@ -1,6 +1,7 @@
 [tools]
-node = "22.19"
-pi = "1.0.4"
+node = "24.21.0"
+pi = "1.1.0"
+pnpm = "12.11.2"
 
 [env]
 _PI_ROOT = "{{ config_root }}"
